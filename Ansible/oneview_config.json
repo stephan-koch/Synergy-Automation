@@ -1,0 +1,10 @@
+{
+  "ip": "10.0.XX.XX",
+  "credentials": {
+    "userName": "XXXXXXXX",
+    "authLoginDomain": "local",
+    "password": "XXXXXXXXX"
+  },
+  "image_streamer_ip": "10.0.XX.XX",
+  "api_version": 1000
+}

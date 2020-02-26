@@ -1,0 +1,185 @@
+##
+# Copyright 2017 Hewlett Packard Enterprise Development LP
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# You may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Brought to you by the fine Folks at the America's Solution Center located in Beautiful Alpharetta GA...
+# Error free since 9 AM this morning!!!!
+###
+
+- hosts: localhost
+  gather_facts: no
+  vars:
+    config: '{{ playbook_dir }}/oneview_config.json'
+    server_hardware_type_name: " SY480G10 M1:416SA M3:4820CNA"
+    enclosure_group_name: "3 Frame VC-ETH SAS-Switch"
+    auto_assign_server_hardware: "false"
+    ov_server:         "CTC H5 HE11, bay 2"
+    ovpythonPW: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          62623963656162326433363139363133653630393739356564343536323839326165396162383832
+          3538333332396132383336623163396439303064313263330a326231646338316138393933313036
+          31353965393039656661303661306561613633626539313030636538366532646233386333346130
+          6239343739353364310a353636323539623863333632353063386538306565376234383736383532
+          3062
+    iloPW: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          63386562623766626664663564643539663638393830373539326531383364313530623432623830
+          3037613863633365613132356338333336323733376665640a373436636530303165643532393632
+          63643864353733346538663038376630353465303930316434373762613261366561323930353066
+          3434643164646439360a343363616335623062616331643136616439326134343334366138633838
+          6330
+    vcenterPW: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          38353061353361326238643663306531383634333838303339386137663630653065656439643831
+          3665393730363038313362633765396161373139396233660a663664323963306361383261323664
+          36386461633935373266393434653434306162656633636264663964333966373863383232333666
+          6337313530626238610a646562663463343136393363313866373163353538633165323161653231
+          6639
+    
+  vars_prompt:
+
+    - name: osflavor 
+      prompt: "Please select the OS to Install.\n1- OS_ESXI\n2- OS_RHEL\n3- OS_CentOS with Docker \n"
+      private: no
+    
+    - name: profile_name
+      prompt: "Please enter a name for the Server Profile.\n"
+      private: no
+
+    - name: ipaddr
+      prompt: "Please enter the server IP address.\n"
+      private: no
+   
+    - name: hostn
+      prompt: "Please enter  the Server Hostname.\n"
+      private: no
+
+  tasks:
+    - set_fact: osflavor=ESXIBOOT osbase=ESXIBASE ov_template=ANSIBLE_OS_Deploy_via_iLO install=http://osdepl.demo.local/esx67/esx67u3custom.iso source=ksesx.cfg.j2 destination=/persistent/osdepl/esx67/ks_custom67.cfg
+      when: (osflavor == "1")
+
+    - set_fact: osflavor=LINUXBOOT2 osbase=LINUXBOOT ov_template=ANSIBLE_OS_Deploy_via_iLO install=http://osdepl.demo.local/rhel77/rhel77custom.iso source=ksrhel.cfg.k2 destination=/persistent/osdepl/rhel77/rhel77ks.cfg
+      when: (osflavor == "2")
+
+    - set_fact: osflavor=LINUXBOOT3 osbase=LINUXBOOT ov_template=ANSIBLE_OS_Deploy_via_iLO install=http://osdepl.demo.local/centos/centos7custom.iso source=kscentos.cfg.k2 destination=/persistent/osdepl/centos/centos7ks.cfg
+      when: (osflavor == "3")
+
+
+    - debug: var=ipaddr
+    - debug: var=osbase
+    - debug: var=hostn
+
+    - name: create custom kickstart file
+      template:
+        src: "{{source}}"
+        dest:  "{{destination}}"
+      delegate_to: localhost
+
+    - name: Get sessionID
+      uri:
+        url: https://10.0.XX.XX/rest/login-sessions
+        validate_certs: no
+        method: POST
+        body_format: json
+        headers:
+           accept: "application/json"
+           Content-Type: "application/json"
+        body: {"userName":"XXXXX","password":"{{ovpythonPW}}"}
+        status_code: 200
+        return_content: yes
+      register: sessionid
+
+    - name : Parsing sessionID
+      debug:
+        msg: "{{sessionid.json.sessionID}}"
+
+    - name : "Create Server Profile from Template - {{ profile_name }}"
+      oneview_server_profile:
+        config: "{{ config }}"
+        data:
+          name: "{{ profile_name }}"
+          serverProfileTemplateName: "{{ ov_template }}"
+          serverHardwareName:         "{{ ov_server }}"
+      register: mpHostInfo
+      delegate_to: localhost
+    - debug:
+#        var: mpHostInfo
+        var:  server_hardware.mpHostInfo.mpIpAddresses[1].address 
+
+    - name: Task to boot a system using an ISO from an HP iLO interface only if the system is an HP server
+      hpilo_boot:
+        host: "{{ server_hardware.mpHostInfo.mpIpAddresses[1].address }}" 
+        login: skoch
+        password: "{{ iloPW }}"
+        media: cdrom
+        image: "{{ install }}" 
+      delegate_to: localhost
+#    - debug: var=ansible_facts
+
+# Waiting for the server boot to complete, test for Port 22
+    - name: wait for port 22 to become active
+      wait_for:
+        host: "{{ipaddr}}"
+        port: 22
+        delay: 20
+        state: started
+        timeout: 1600
+      delegate_to: localhost
+ 
+#    - name: Remove file (delete file)
+#      file:
+#        path: "/var/www/html/build/{{destion}}"
+#        state: absent
+#      delegate_to: localhost
+
+
+
+    - name: Install Nginx
+      remote_user: vagrant
+      become: yes
+      become_method: sudo
+      docker_container:
+        name: nginx
+        image: nginx:latest
+        detach: True
+        ports:
+            - 80:80
+      delegate_to: "{{ ipaddr }}"
+      when: (osflavor == "LINUXBOOT3")
+
+
+    - name: Tweak Nginx
+      remote_user: vagrant
+      become: yes
+      become_method: sudo
+      command:  docker exec -it nginx sed -i 's/nginx/Discover More/g' /usr/share/nginx/html/index.html
+      delegate_to: "{{ ipaddr }}"
+      when: (osflavor == "LINUXBOOT3")
+
+
+
+    - name: Add ESXi Host to vCenter
+      vmware_host:
+        hostname: 'VCENTERHOST.demo.local'
+        username: 'XXXXX@vsphere.local'
+        password: '{{ vcenterPW }}'
+        datacenter_name: Demodatacenter
+        cluster_name: Democluster
+        esxi_hostname: '{{ ipaddr }}'
+        esxi_username: 'root'
+        esxi_password: 'HP1nvent!'
+        state: present
+        validate_certs: False
+      delegate_to: localhost
+      when: (osflavor == "ESXIBOOT")

@@ -1,0 +1,53 @@
+lang en_US.UTF-8
+keyboard us
+timezone --utc America/New_York
+text
+install
+skipx
+network  --bootproto=static --ip={{ipaddr}} --netmask=255.255.255.0 --gateway=10.0.33.254 --nameserver=10.0.20.5 --hostname={{hostn}}
+authconfig --enable shadow --enablemd5
+firstboot --enable
+cdrom
+rootpw HP1nvent
+ignoredisk --only-use=/dev/disk/by-id/dm-name-mpatha
+zerombr
+clearpart --all --initlabel
+autopart --type=lvm
+reboot
+
+user --name=vagrant --plaintext --password vagrant --groups=vagrant,wheel
+
+#repo --name=docker --baseurl=https://download.docker.com/linux/centos/docker-ce.repo
+
+# Disable firewall and selinux
+firewall --disabled
+selinux --disabled
+
+%pre
+%end
+
+%packages
+@Base
+@Core
+%end
+
+
+%post
+echo "vagrant        ALL=(ALL)       NOPASSWD: ALL" >> /etc/sudoers.d/vagrant
+sed -i "s/^.*requiretty/#Defaults requiretty/" /etc/sudoers
+
+/bin/mkdir /home/vagrant/.ssh
+/bin/chmod 700 /home/vagrant/.ssh
+/bin/echo -e 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDKphudM9WIBRid2DKz/UlQ+t99bKMBfmynwy0Fj3ugolElu0lsCr0wRMeopHr5NyUz0EI4diO1CKSwu53axvQr8Lquu8W4/fi39r027efu0xMsCf2eJFY+b7a8wyC8Y+UhXRfFxXWixuLxC06vlrew26Z7UXzk+WRCb/ixiN8wfRryUIROZ4RrV4cUt/gcobMSyvNVKJksHfy/1MAGbwzenXXXXXXXXXXXXXXXXXXXXXXXXXXiGAc5UryDSJZpFTdAMY1aLQUOP7FlUNH30tHOyZLrp9HBhtQ3gZO7rsHJwgtIIw5DnRF8BRmDq5AKvyDZRrEDEHirMTAt+BetokBA6DF skoch@ansible' > /home/vagrant/.ssh/authorized_keys
+/bin/chown -R vagrant:vagrant /home/vagrant/.ssh
+/bin/chmod 0400 /home/vagrant/.ssh/*
+
+/usr/bin/yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+/usr/bin/yum install docker-ce -y
+/usr/bin/systemctl enable docker
+
+/usr/sbin/usermod  -a -G docker vagrant
+/usr/bin/yum -y install epel-release
+/usr/bin/yum -y install python-pip
+/usr/bin/pip install docker-py
+%end
