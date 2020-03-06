@@ -4,7 +4,7 @@ Examples are in RestAPI, Python Powershell or Ansible.
 
 In the folders you will examples where an OS Deployment through an kickstart Installation will be made while the Host will be booted from an iso which is mounted via iLO.
 
-![Screenshot]("pic/OSDeploywILO.jpg")
+![Screenshot]("/pic/OSDeploywILO.jpg")
  
 
 Codes are free to use in demostration environments. 
